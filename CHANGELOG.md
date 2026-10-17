@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.0 - 2026-10-17
+
 Initial release.
 
 - Runs Photoshop-compatible filter plug-ins (`.8bf`) on Krita paint layers through
