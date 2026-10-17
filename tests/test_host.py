@@ -90,7 +90,7 @@ def test_successful_run_collects_output(tmp_path):
     command = fake_host(
         tmp_path,
         """
-        print("hello")
+        sys.stdout.buffer.write(b"hello\\n")
         sys.stderr.write("[host] a log line\\n")
         """,
     )
