@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# The 8bf-host release the integration tests build. They need a dynamically
+# linked build, which the static release binaries are not, so it is built
+# from source.
+env:
+  EIGHTBF_HOST_REF: v0.1.0
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: make lint
+      - name: Check that pyproject.toml and __init__.py agree on the version
+        run: |
+          project=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml)
+          package=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' krita_8bfhost_bridge/__init__.py)
+          if [[ "$project" != "$package" ]]; then
+            echo "pyproject.toml says $project, __init__.py says $package" >&2
+            exit 1
+          fi
+
+  # Unit tests on each platform Krita runs on. 3.8 is the oldest Python a
+  # Krita 5 build embeds; 3.12 is what Krita 5.2 ships on Linux.
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, python: "3.8" }
+          - { os: ubuntu-latest, python: "3.12" }
+          - { os: macos-latest, python: "3.12" }
+          - { os: windows-latest, python: "3.12" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest
+      - run: python -m pytest -q
+
+  # The tests that run the native test filter through a real 8bf-host.
+  integration:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: distortionary-labs/8bf-host
+          ref: ${{ env.EIGHTBF_HOST_REF }}
+          path: 8bf-host
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      # rustup reads the toolchain from 8bf-host's rust-toolchain.toml.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 8bf-host
+      - run: cargo build --release --locked
+        working-directory: 8bf-host
+      - run: python -m pytest -q -rs
+        env:
+          EIGHTBF_HOST: ${{ github.workspace }}/8bf-host/target/release/8bf-host
+
+  # Runs only for a v* tag, after every check above passes. bin/release
+  # creates and pushes that tag.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [lint, test, integration]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag against the version
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' krita_8bfhost_bridge/__init__.py)
+          if [[ "v$version" != "$GITHUB_REF_NAME" ]]; then
+            echo "tag $GITHUB_REF_NAME does not match version $version" >&2
+            exit 1
+          fi
+      - name: Write release notes
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          awk -v v="$version" '
+            index($0, "## " v " ") == 1 { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if [[ ! -s notes.md ]]; then
+            echo "CHANGELOG.md has no section for $version" >&2
+            exit 1
+          fi
+      - run: make package
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          (cd dist && sha256sum ./* > SHA256SUMS)
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "krita-8bfhost-bridge ${GITHUB_REF_NAME#v}" --notes-file notes.md

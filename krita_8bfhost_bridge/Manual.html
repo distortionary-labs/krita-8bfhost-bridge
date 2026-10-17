@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Photoshop Filters (8bf)</title></head>
+<body>
+<h3>Photoshop Filters (8bf)</h3>
+<p>Runs Photoshop-compatible filter plug-ins (<code>.8bf</code> files) on paint layers through
+<b>8bf-host</b>, a separate program you install yourself.</p>
+
+<h4>Getting started</h4>
+<ol>
+  <li>Download 8bf-host for your system from
+      <a href="https://github.com/distortionary-labs/8bf-host/releases">its releases page</a>.</li>
+  <li>Open <b>Tools &gt; Scripts &gt; 8bf Filter Settings…</b>. On the <b>8bf-host</b> tab, set
+      the location of the program (or leave it empty if it is on your PATH) and press
+      <b>Check Setup</b>.</li>
+  <li>Add the folders that contain your filters on the <b>Folders</b> tab. Subfolders are
+      searched too. 8bf-host also searches the usual Adobe plug-in folders by itself.</li>
+  <li>Select a paint layer, optionally make a selection, and choose a filter from
+      <b>Tools &gt; Scripts &gt; Photoshop Filters (8bf)</b>. The filter's window belongs to
+      8bf-host and may open behind Krita.</li>
+  <li>The result is placed in a new layer above the active one. Change this on the
+      <b>8bf-host</b> tab; writing into the active layer cannot be undone with Ctrl+Z.</li>
+</ol>
+
+<h4>Supported layers</h4>
+<p>8-bit and 16-bit RGB and 8-bit grayscale paint layers. Filters that only support 8-bit
+images run on an 8-bit copy of 16-bit layers. Convert other layers first.</p>
+
+<h4>Linux</h4>
+<p>Windows filters run under Wine with the Windows build of 8bf-host. The 8bf-host
+documentation describes the setup; <b>Check Setup</b> shows whether it is complete.</p>
+
+<h4>Repeating a filter</h4>
+<p><b>Tools &gt; Scripts &gt; Repeat</b> reruns the last filter with its last settings and
+without its dialog. You can assign it a shortcut under <b>Settings &gt; Configure Krita &gt;
+Keyboard Shortcuts</b>.</p>
+</body>
+</html>

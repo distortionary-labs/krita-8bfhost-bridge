@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+X-KDE-Library=krita_8bfhost_bridge
+X-Python-2-Compatible=false
+X-Krita-Manual=Manual.html
+Name=Photoshop Filters (8bf)
+Comment=Run Photoshop-compatible filter plug-ins (.8bf) on Krita layers

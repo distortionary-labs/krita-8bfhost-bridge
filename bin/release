@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Releases krita-8bfhost-bridge.
+#
+#   bin/release 0.2.0   set the version, date the changelog, check, commit,
+#                       tag v0.2.0 and push
+#   bin/release         the same for the version already in __init__.py
+#
+# The version's changelog section is the "## Unreleased" one, renamed to
+# "## <version> - <today>"; if a dated section for the version already
+# exists, it is used as is.
+#
+# Pushing the tag is the release: CI runs the tests, including the ones
+# against a real 8bf-host, builds the plug-in zip and creates the GitHub
+# release with it and the changelog section as notes. Nothing is built here.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+# make and ruff come from the devenv shell.
+if [[ -z "${DEVENV_ROOT:-}" ]] && command -v devenv >/dev/null; then
+  exec devenv shell -- bin/release "$@"
+fi
+for tool in make ruff zip; do
+  if ! command -v "$tool" >/dev/null; then
+    echo "error: $tool not found; run this from the devenv shell" >&2
+    exit 1
+  fi
+done
+
+init=krita_8bfhost_bridge/__init__.py
+current=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' "$init")
+version=${1:-$current}
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+  echo "error: '$version' is not a semver version" >&2
+  exit 1
+fi
+
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "error: the working tree has uncommitted changes" >&2
+  exit 1
+fi
+branch=$(git rev-parse --abbrev-ref HEAD)
+if [[ "$branch" != main ]]; then
+  echo "error: releases are made from main, not $branch" >&2
+  exit 1
+fi
+git fetch -q origin main --tags
+if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+  echo "error: main and origin/main differ; pull or push first" >&2
+  exit 1
+fi
+if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+  echo "error: tag v$version already exists" >&2
+  exit 1
+fi
+
+# Undo the version and changelog edits if anything below fails.
+released=false
+trap '$released || git checkout -q -- pyproject.toml "$init" CHANGELOG.md' EXIT
+
+sed -i "s/^__version__ = \".*\"/__version__ = \"$version\"/" "$init"
+sed -i "0,/^version = \".*\"/s//version = \"$version\"/" pyproject.toml
+
+if ! grep -q "^## $version - " CHANGELOG.md; then
+  if ! grep -q '^## Unreleased$' CHANGELOG.md; then
+    echo "error: CHANGELOG.md has neither '## $version - <date>' nor '## Unreleased'" >&2
+    exit 1
+  fi
+  sed -i "0,/^## Unreleased$/s//## Unreleased\n\n## $version - $(date +%F)/" CHANGELOG.md
+fi
+
+make lint test package
+
+if [[ -n "$(git status --porcelain)" ]]; then
+  git commit -q -am "Release $version"
+fi
+released=true
+git tag -a "v$version" -m "krita-8bfhost-bridge $version"
+git push --atomic origin HEAD:main "v$version"
+
+echo
+echo "Pushed v$version. CI builds and publishes the release:"
+echo "  gh run watch \$(gh run list -L 1 --branch v$version --json databaseId -q '.[0].databaseId')"
